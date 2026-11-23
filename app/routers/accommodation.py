@@ -30,7 +30,7 @@ class ListingBody(BaseModel):
 
 class TransitionBody(BaseModel):
     action: str = Field(
-        description="verify | reject | activate | deactivate | resubmit"
+        description="verify | approve | reject | activate | deactivate | resubmit"
     )
 
 

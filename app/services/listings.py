@@ -11,7 +11,14 @@ from app.database import engine
 from app.models.listing import Listing
 from app.models.message import Message
 from app.services.housing_auth import get_user
-from app.services.lifecycle import ACTIONS, apply_action, visible_to_students
+from app.services.lifecycle import (
+    ACTIONS,
+    apply_action,
+    fields_for_status,
+    messageable,
+    normalize_status,
+    visible_to_students,
+)
 
 ALLOWED_AREAS = {"st_augustine", "mount_hope"}
 
@@ -44,6 +51,7 @@ def submit_listing(
     # DEFECT: empty amenities allowed
 
     with Session(engine) as session:
+        initial_fields = fields_for_status("pending")
         listing = Listing(
             landlord_id=landlord_id,
             title=title,
@@ -53,11 +61,7 @@ def submit_listing(
             contact_phone=contact_phone,
             contact_email=contact_email,
             photos=photos,
-            status="pending",
-            flag_pending=1,
-            flag_verified=0,
-            flag_active=0,
-            flag_rejected=0,
+            **initial_fields,
             created_at=_now(),
         )
         session.add(listing)
@@ -139,8 +143,12 @@ def browse_for_students(
 def list_all(*, status: str | None = None) -> list[dict[str, Any]]:
     with Session(engine) as session:
         stmt = select(Listing).order_by(Listing.id)
-        if status:
-            stmt = stmt.where(Listing.status == status)
+        normalized_status = normalize_status(status) if status else None
+        if normalized_status:
+            if normalized_status == "approved":
+                stmt = stmt.where(Listing.status.in_({"approved", "verified"}))
+            else:
+                stmt = stmt.where(Listing.status == normalized_status)
         return [r.model_dump() for r in session.exec(stmt).all()]
 
 
@@ -154,7 +162,8 @@ def send_message(student_id: int, listing_id: int, body: str) -> dict[str, Any]:
         listing = session.get(Listing, listing_id)
         if listing is None:
             return {"ok": False, "error": "listing not found"}
-        # DEFECT: can message pending/rejected listings
+        if not messageable(listing.model_dump()):
+            return {"ok": False, "error": "listing not available for messaging"}
         message = Message(
             listing_id=listing_id,
             student_id=student_id,
