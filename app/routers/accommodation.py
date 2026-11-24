@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.dependencies.auth import ApiAdminDep, ApiUserDep
 from app.services import housing_auth as auth
 from app.services import listings
+from app.utilities.security import create_access_token
 
 router = APIRouter(tags=["student-accommodation"])
 
@@ -39,29 +41,21 @@ class MessageBody(BaseModel):
     body: str
 
 
-def _actor_id(x_user_id: str | None) -> int:
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="X-User-Id header required")
-    try:
-        return int(x_user_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="X-User-Id must be int") from exc
-
-
 @router.post("/auth/login")
 def login(body: LoginBody) -> dict[str, Any]:
     user = auth.login(body.email, body.password)
     if not user:
         raise HTTPException(status_code=401, detail="invalid credentials")
-    return {"user": user}
+    access_token = create_access_token(
+        data={"sub": str(user["id"]), "role": user.get("role", "")}
+    )
+    return {"user": user, "access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/landlord/listings")
-def submit(
-    body: ListingBody, x_user_id: str | None = Header(default=None)
-) -> dict[str, Any]:
+def submit(body: ListingBody, current_user: ApiUserDep) -> dict[str, Any]:
     result = listings.submit_listing(
-        _actor_id(x_user_id),
+        current_user.id,
         title=body.title,
         area=body.area,
         price=body.price,
@@ -79,9 +73,9 @@ def submit(
 def transition(
     listing_id: int,
     body: TransitionBody,
-    x_user_id: str | None = Header(default=None),
+    current_user: ApiUserDep,
 ) -> dict[str, Any]:
-    result = listings.transition(_actor_id(x_user_id), listing_id, body.action)
+    result = listings.transition(current_user.id, listing_id, body.action)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
@@ -89,13 +83,13 @@ def transition(
 
 @router.get("/student/listings")
 def browse(
+    current_user: ApiUserDep,
     area: str | None = None,
     max_price: int | None = None,
     amenity: str | None = None,
-    x_user_id: str | None = Header(default=None),
 ) -> dict[str, Any]:
     result = listings.browse_for_students(
-        _actor_id(x_user_id), area=area, max_price=max_price, amenity=amenity
+        current_user.id, area=area, max_price=max_price, amenity=amenity
     )
     if not result.get("ok"):
         raise HTTPException(status_code=403, detail=result.get("error"))
@@ -104,21 +98,15 @@ def browse(
 
 @router.get("/admin/listings")
 def admin_list(
-    status: str | None = None, x_user_id: str | None = Header(default=None)
+    _admin: ApiAdminDep,
+    status: str | None = None,
 ) -> dict[str, Any]:
-    actor = auth.get_user(_actor_id(x_user_id))
-    if not actor or actor["role"] != "admin":
-        raise HTTPException(status_code=403, detail="admin only")
     return {"listings": listings.list_all(status=status)}
 
 
 @router.post("/student/messages")
-def message(
-    body: MessageBody, x_user_id: str | None = Header(default=None)
-) -> dict[str, Any]:
-    result = listings.send_message(
-        _actor_id(x_user_id), body.listing_id, body.body
-    )
+def message(body: MessageBody, current_user: ApiUserDep) -> dict[str, Any]:
+    result = listings.send_message(current_user.id, body.listing_id, body.body)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
