@@ -161,13 +161,15 @@ def _ok(
 
 def apply_action(listing: dict[str, Any], action: str) -> dict[str, Any]:
     if action not in ACTIONS:
-        return {"ok": False, "error": f"unknown action {action!r}"}
+        return {"ok": False, "code": "invalid_action", "error": f"unknown action {action!r}"}
 
     try:
         current = state_for(listing.get("status"))
         next_state = current.transition(action)
     except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
+        message = str(exc)
+        code = "invalid_transition" if "invalid transition" in message else "invalid_state"
+        return {"ok": False, "code": code, "error": message}
 
     return _ok(listing, next_state, changed=current.value != next_state.value)
 

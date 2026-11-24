@@ -77,7 +77,13 @@ def transition(
 ) -> dict[str, Any]:
     result = listings.transition(current_user.id, listing_id, body.action)
     if not result.get("ok"):
-        raise HTTPException(status_code=400, detail=result.get("error"))
+        code = result.get("code")
+        status_code = 400
+        if code == "forbidden":
+            status_code = 403
+        elif code == "not_found":
+            status_code = 404
+        raise HTTPException(status_code=status_code, detail=result.get("error"))
     return result
 
 
