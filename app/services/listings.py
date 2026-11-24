@@ -73,28 +73,29 @@ def submit_listing(
 def transition(actor_id: int, listing_id: int, action: str) -> dict[str, Any]:
     actor = get_user(actor_id)
     if not actor:
-        return {"ok": False, "error": "unknown user"}
+        return {"ok": False, "code": "forbidden", "error": "unknown user"}
     if action not in ACTIONS:
-        return {"ok": False, "error": f"action must be one of {ACTIONS}"}
+        return {"ok": False, "code": "invalid_action", "error": f"action must be one of {ACTIONS}"}
 
     with Session(engine) as session:
         listing = session.get(Listing, listing_id)
         if listing is None:
-            return {"ok": False, "error": "listing not found"}
+            return {"ok": False, "code": "not_found", "error": "listing not found"}
         row = listing.model_dump()
 
-        # Role gates (loose)
-        if action in {"verify", "reject"} and actor["role"] != "admin":
-            return {"ok": False, "error": "admin only"}
-        if action in {"activate", "deactivate", "resubmit"} and actor["role"] not in {
-            "landlord",
-            "admin",
-        }:
-            return {"ok": False, "error": "landlord/admin only"}
-        # DEFECT: any landlord can activate any listing (no ownership check)
+        if action in {"verify", "approve", "reject"}:
+            if actor["role"] != "admin":
+                return {"ok": False, "code": "forbidden", "error": "admin only"}
+        elif action in {"activate", "deactivate", "resubmit", "submit"}:
+            if actor["role"] != "admin" and actor["id"] != row.get("landlord_id"):
+                return {"ok": False, "code": "forbidden", "error": "owner or admin only"}
+        else:
+            return {"ok": False, "code": "invalid_action", "error": f"action must be one of {ACTIONS}"}
 
         result = apply_action(row, action)
         if not result.get("ok"):
+            if "code" not in result:
+                result = {**result, "code": "invalid_transition"}
             return result
 
         updated = result["row"]
