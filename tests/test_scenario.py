@@ -69,6 +69,52 @@ def test_student_browse():
     assert isinstance(r.json()["listings"], list)
 
 
+def test_provisional_student_can_browse_and_message():
+    headers = _headers_for("incoming@example.com", "stud-dev")
+    browse_response = client.get("/api/student/listings", headers=headers)
+
+    assert browse_response.status_code == 200
+    active_listing = _admin_listing("Verified Active Flat")
+    assert any(
+        listing["id"] == active_listing["id"]
+        for listing in browse_response.json()["listings"]
+    )
+
+    message_response = client.post(
+        "/api/student/messages",
+        json={"listing_id": active_listing["id"], "body": "Is this available?"},
+        headers=headers,
+    )
+    assert message_response.status_code == 200
+    assert message_response.json()["ok"] is True
+
+
+def test_student_without_id_or_provisional_flag_cannot_browse_or_message(monkeypatch):
+    headers = _headers_for("student@example.com", "stud-dev")
+    monkeypatch.setattr(
+        "app.services.listings.get_user",
+        lambda _user_id: {
+            "id": int(headers["X-User-Id"]),
+            "role": "student",
+            "student_id": None,
+            "provisional": 0,
+        },
+    )
+
+    browse_response = client.get("/api/student/listings", headers=headers)
+    assert browse_response.status_code == 403
+    assert browse_response.json()["detail"] == "eligible students only"
+
+    active_listing = _admin_listing("Verified Active Flat")
+    message_response = client.post(
+        "/api/student/messages",
+        json={"listing_id": active_listing["id"], "body": "Is this available?"},
+        headers=headers,
+    )
+    assert message_response.status_code == 400
+    assert message_response.json()["detail"] == "eligible students only"
+
+
 def test_student_browse_visibility_follows_status_only():
     headers = _headers_for("student@example.com", "stud-dev")
 
@@ -78,6 +124,77 @@ def test_student_browse_visibility_follows_status_only():
     titles = [listing["title"] for listing in response.json()["listings"]]
     assert "Verified Active Flat" in titles
     assert "Pending Unit" not in titles
+
+
+def test_student_browse_amenity_filter_uses_exact_case_insensitive_tokens():
+    headers = _headers_for("student@example.com", "stud-dev")
+
+    case_insensitive = client.get(
+        "/api/student/listings",
+        params={"amenity": "WiFi, Parking"},
+        headers=headers,
+    )
+    assert case_insensitive.status_code == 200
+    assert "Verified Active Flat" in [
+        item["title"] for item in case_insensitive.json()["listings"]
+    ]
+
+    partial_token = client.get(
+        "/api/student/listings",
+        params={"amenity": "wi"},
+        headers=headers,
+    )
+    assert partial_token.status_code == 200
+    assert partial_token.json()["listings"] == []
+
+
+def test_student_browse_amenity_comma_list_requires_every_token():
+    headers = _headers_for("student@example.com", "stud-dev")
+
+    response = client.get(
+        "/api/student/listings",
+        params={"amenity": "WiFi, Gym"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    titles = [item["title"] for item in response.json()["listings"]]
+    assert "Summit Hill Apartment" in titles
+    assert "Verified Active Flat" not in titles
+
+
+def test_student_browse_min_price_is_inclusive_and_applies_with_max_price():
+    headers = _headers_for("student@example.com", "stud-dev")
+
+    response = client.get(
+        "/api/student/listings",
+        params={"min_price": 3500, "max_price": 3500},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    listings = response.json()["listings"]
+    assert listings
+    assert all(item["price"] == 3500 for item in listings)
+    assert "Verified Active Flat" in [item["title"] for item in listings]
+
+
+def test_student_browse_rejects_negative_or_inverted_price_ranges():
+    headers = _headers_for("student@example.com", "stud-dev")
+
+    negative_minimum = client.get(
+        "/api/student/listings",
+        params={"min_price": -1},
+        headers=headers,
+    )
+    assert negative_minimum.status_code == 422
+
+    inverted_range = client.get(
+        "/api/student/listings",
+        params={"min_price": 3500, "max_price": 2500},
+        headers=headers,
+    )
+    assert inverted_range.status_code == 422
 
 
 def test_transition_rejects_illegal_activation_from_pending():

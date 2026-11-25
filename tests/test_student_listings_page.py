@@ -56,6 +56,24 @@ def test_listings_page_renders_listing_fields():
     assert "Pending Unit" not in response.text
 
 
+def test_ineligible_student_cannot_view_listing_details(monkeypatch):
+    client = _signed_in_client()
+    monkeypatch.setattr(
+        "app.services.listings.get_user",
+        lambda _user_id: {
+            "role": "student",
+            "student_id": None,
+            "provisional": 0,
+        },
+    )
+
+    response = client.get("/app/listings")
+
+    assert response.status_code == 403
+    assert "eligible students only" in response.text
+    assert "Verified Active Flat" not in response.text
+
+
 def test_listings_page_shows_empty_state_for_no_matches():
     client = _signed_in_client()
 
@@ -63,6 +81,24 @@ def test_listings_page_shows_empty_state_for_no_matches():
 
     assert response.status_code == 200
     assert "No listings are available right now" in response.text
+
+
+def test_listings_page_applies_min_price_filter():
+    client = _signed_in_client()
+
+    response = client.get("/app/listings", params={"min_price": 3500})
+
+    assert response.status_code == 200
+    assert "Verified Active Flat" in response.text
+    assert "Campus View Room" not in response.text
+
+
+def test_listings_page_rejects_negative_min_price():
+    client = _signed_in_client()
+
+    response = client.get("/app/listings", params={"min_price": -1})
+
+    assert response.status_code == 422
 
 
 def test_non_student_receives_forbidden_page():

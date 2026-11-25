@@ -1,9 +1,26 @@
 from types import SimpleNamespace
 
 import jwt
+import pytest
 
 from app.services.auth_service import AuthService
+from app.services.housing_auth import is_eligible_student
 from app.utilities.security import encrypt_password, verify_password
+
+
+@pytest.mark.parametrize(
+    ("user", "expected"),
+    [
+        ({"role": "student", "student_id": "202012345", "provisional": 0}, True),
+        ({"role": "student", "student_id": None, "provisional": 1}, True),
+        ({"role": "student", "student_id": None, "provisional": 0}, False),
+        ({"role": "student", "student_id": "   ", "provisional": 0}, False),
+        ({"role": "landlord", "student_id": "202012345", "provisional": 0}, False),
+        (None, False),
+    ],
+)
+def test_is_eligible_student(user, expected):
+    assert is_eligible_student(user) is expected
 
 
 def test_password_hash_round_trip_and_rejects_wrong_password():

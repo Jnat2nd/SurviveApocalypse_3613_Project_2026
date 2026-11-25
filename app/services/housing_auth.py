@@ -23,6 +23,13 @@ def public_user(user: User | dict | None) -> dict[str, Any] | None:
     return data
 
 
+def is_eligible_student(user: dict[str, Any] | None) -> bool:
+    if not user or user.get("role") != "student":
+        return False
+    student_id = str(user.get("student_id") or "").strip()
+    return bool(student_id or user.get("provisional"))
+
+
 def login(email: str, password: str) -> dict[str, Any] | None:
     with Session(engine) as session:
         user = session.exec(select(User).where(User.email == email)).one_or_none()
