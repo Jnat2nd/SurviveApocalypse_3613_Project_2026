@@ -6,6 +6,9 @@
     <a class="brand-wordmark" href="{{ url_for('index_view') }}">NestLink</a>
     <nav class="app-topnav" aria-label="App">
       <a class="{{ 'is-active' if request.url.path.startswith('/app') }}" href="{{ url_for('user_home_view') }}">Home</a>
+      {% if user.role == "landlord" %}
+      <a class="{{ 'is-active' if request.url.path.startswith('/landlord') }}" href="/landlord/listings">My listings</a>
+      {% endif %}
       <a href="/docs">API docs</a>
       <a href="{{ url_for('logout') }}">Sign out</a>
       <span class="app-user">{{ user.username }}</span>
