@@ -24,7 +24,7 @@ from app.models.message import Message
 from app.models.user import User
 from app.services import listings
 from app.services.auth_service import AuthService
-from app.services.housing_auth import public_user
+from app.services.housing_auth import is_eligible_student, public_user
 from app.services.lifecycle import (
     ACTIONS,
     InvalidTransitionError,
@@ -1050,6 +1050,21 @@ class TestAuthRoleHelpers:
 
         assert asyncio.run(is_admin_dep(user)) is user
         assert asyncio.run(is_api_admin_dep(user)) is user
+
+
+@pytest.mark.parametrize(
+    ("user", "expected"),
+    [
+        ({"role": "student", "student_id": "202012345", "provisional": 0}, True),
+        ({"role": "student", "student_id": None, "provisional": 1}, True),
+        ({"role": "student", "student_id": None, "provisional": 0}, False),
+        ({"role": "student", "student_id": "   ", "provisional": 0}, False),
+        ({"role": "landlord", "student_id": "202012345", "provisional": 0}, False),
+        (None, False),
+    ],
+)
+def test_is_eligible_student(user, expected):
+    assert is_eligible_student(user) is expected
 
 
 class TestSupportUtilities:
