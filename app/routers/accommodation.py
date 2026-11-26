@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.dependencies.auth import ApiAdminDep, ApiUserDep
@@ -91,14 +91,20 @@ def transition(
 def browse(
     current_user: ApiUserDep,
     area: str | None = None,
-    max_price: int | None = None,
+    min_price: int | None = Query(default=None, ge=0),
+    max_price: int | None = Query(default=None, ge=0),
     amenity: str | None = None,
 ) -> dict[str, Any]:
     result = listings.browse_for_students(
-        current_user.id, area=area, max_price=max_price, amenity=amenity
+        current_user.id,
+        area=area,
+        min_price=min_price,
+        max_price=max_price,
+        amenity=amenity,
     )
     if not result.get("ok"):
-        raise HTTPException(status_code=403, detail=result.get("error"))
+        status_code = 422 if result.get("code") == "invalid_price_range" else 403
+        raise HTTPException(status_code=status_code, detail=result.get("error"))
     return result
 
 

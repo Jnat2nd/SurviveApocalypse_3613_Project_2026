@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from app.database import engine
 from app.models.listing import Listing
 from app.models.message import Message
-from app.services.housing_auth import get_user
+from app.services.housing_auth import get_user, is_eligible_student
 from app.services.lifecycle import (
     ACTIONS,
     apply_action,
@@ -114,13 +114,39 @@ def browse_for_students(
     student_id: int,
     *,
     area: str | None = None,
+    min_price: int | None = None,
     max_price: int | None = None,
     amenity: str | None = None,
 ) -> dict[str, Any]:
     student = get_user(student_id)
-    if not student or student["role"] != "student":
-        return {"ok": False, "error": "students only"}
-    # DEFECT: provisional / missing student_id not blocked
+    if not is_eligible_student(student):
+        error = (
+            "eligible students only"
+            if student and student.get("role") == "student"
+            else "students only"
+        )
+        return {"ok": False, "error": error}
+
+    if min_price is not None and min_price < 0:
+        return {
+            "ok": False,
+            "code": "invalid_price_range",
+            "error": "min_price must be non-negative",
+        }
+    if max_price is not None and max_price < 0:
+        return {
+            "ok": False,
+            "code": "invalid_price_range",
+            "error": "max_price must be non-negative",
+        }
+    if min_price is not None and max_price is not None and min_price > max_price:
+        return {
+            "ok": False,
+            "code": "invalid_price_range",
+            "error": "min_price must not exceed max_price",
+        }
+
+    required_amenities = set(_parse_amenities(amenity or ""))
 
     with Session(engine) as session:
         rows = session.exec(select(Listing).order_by(Listing.id)).all()
@@ -132,10 +158,14 @@ def browse_for_students(
             continue
         if area and item["area"] != area:
             continue
+        if min_price is not None and int(item["price"]) < min_price:
+            continue
         if max_price is not None and int(item["price"]) > max_price:
             continue
-        # DEFECT: amenity filter is substring on raw string, case-sensitive sometimes
-        if amenity and amenity not in item["amenities"]:
+        available_amenities = set(_parse_amenities(item["amenities"]))
+        if required_amenities and not required_amenities.issubset(
+            available_amenities
+        ):
             continue
         results.append(item)
     return {"ok": True, "listings": results}
@@ -155,8 +185,13 @@ def list_all(*, status: str | None = None) -> list[dict[str, Any]]:
 
 def send_message(student_id: int, listing_id: int, body: str) -> dict[str, Any]:
     student = get_user(student_id)
-    if not student or student["role"] != "student":
-        return {"ok": False, "error": "students only"}
+    if not is_eligible_student(student):
+        error = (
+            "eligible students only"
+            if student and student.get("role") == "student"
+            else "students only"
+        )
+        return {"ok": False, "error": error}
     if not body.strip():
         return {"ok": False, "error": "body required"}
     with Session(engine) as session:
