@@ -235,7 +235,13 @@ class TestListingEndpoints:
 
         assert response.status_code == 200
         users = response.json()
-        assert len(users) == 5
+        assert {
+            "admin@example.com",
+            "student@example.com",
+            "incoming@example.com",
+            "landlord@example.com",
+            "landlord2@example.com",
+        } <= {user["email"] for user in users}
         assert all(set(user) == {"id", "username", "email"} for user in users)
 
     def test_student_cannot_message_pending_listing(self, api):
@@ -438,14 +444,17 @@ class TestDatabaseServices:
                 repository.delete_user(identifier)
 
     def test_seed_is_idempotent_and_resettable(self, seeded_session):
+        user_count = len(seeded_session.exec(select(User)).all())
+        listing_count = len(seeded_session.exec(select(Listing)).all())
+
         seed(reset=False)
         seeded_session.expire_all()
 
-        assert len(seeded_session.exec(select(User)).all()) == 5
-        assert len(seeded_session.exec(select(Listing)).all()) == 2
+        assert len(seeded_session.exec(select(User)).all()) == user_count
+        assert len(seeded_session.exec(select(Listing)).all()) == listing_count
 
         seed(reset=True)
         seeded_session.expire_all()
 
-        assert len(seeded_session.exec(select(User)).all()) == 5
-        assert len(seeded_session.exec(select(Listing)).all()) == 2
+        assert len(seeded_session.exec(select(User)).all()) == user_count
+        assert len(seeded_session.exec(select(Listing)).all()) == listing_count

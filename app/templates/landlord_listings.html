@@ -1,0 +1,35 @@
+{% extends "authenticated-base.html" %}
+{% block title %}Landlord Listings · NestLink{% endblock %}
+{% block subpage_content %}
+<section class="listings-page">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+      <h1>Landlord listings</h1>
+      <p class="text-body-secondary mb-0">Your submitted accommodation listings and their current status.</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('user_home_view') }}">Back to home</a>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger" role="alert">{{ error | e }}</div>
+  {% elif listings %}
+  <div class="row g-3">
+    {% for listing in listings %}
+    <div class="col-md-6">
+      <article class="card h-100">
+        <div class="card-body">
+          <h2 class="h5 card-title">{{ listing.title | e }}</h2>
+          <p class="card-text mb-2"><strong>Area:</strong> {{ listing.area | e }}</p>
+          <p class="card-text mb-2"><strong>Price:</strong> {{ listing.price | e }}</p>
+          <p class="card-text mb-2"><strong>Amenities:</strong> {{ listing.amenities | e }}</p>
+          <p class="card-text mb-0"><strong>Status:</strong> {{ listing.status | e }}</p>
+        </div>
+      </article>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="alert alert-light" role="status">You have not submitted any listings yet.</div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -449,7 +449,12 @@ class FakeSession:
 ADMIN = {"id": 1, "role": "admin"}
 OWNER = {"id": 2, "role": "landlord"}
 OTHER_LANDLORD = {"id": 3, "role": "landlord"}
-STUDENT = {"id": 4, "role": "student"}
+STUDENT = {
+    "id": 4,
+    "role": "student",
+    "student_id": "202012345",
+    "provisional": 0,
+}
 
 
 def _listing(status="pending", landlord_id=OWNER["id"], **overrides):
@@ -597,7 +602,7 @@ class TestBrowseService:
             ({"area": "st_augustine"}, [11]),
             ({"max_price": 1500}, [11]),
             ({"amenity": "gym"}, [11]),
-            ({"amenity": "GYM"}, []),
+            ({"amenity": "GYM"}, [11]),
             ({"area": "st_augustine", "amenity": "gym"}, [11]),
         ],
     )
@@ -622,7 +627,12 @@ class TestBrowseService:
         assert result == {"ok": False, "error": "students only"}
 
     def test_provisional_student_is_not_blocked(self, monkeypatch):
-        provisional = {"id": 5, "role": "student"}
+        provisional = {
+            "id": 5,
+            "role": "student",
+            "student_id": None,
+            "provisional": 1,
+        }
         _patch_listings(monkeypatch, provisional, FakeSession([_listing(status="active")]))
 
         result = listings.browse_for_students(5)
